@@ -1,0 +1,101 @@
+---
+title: "Dockers for reproducible analyses"
+subtitle: "(and R users)"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-depth: 3
+    css: styles.css
+    self-contained: true
+    fig-width: 15
+    fig-height: 15
+---
+
+# Overview
+
+- Images vs. containers: 
+  - An `image` is a static file that contains the source code required to run the operating system of your choice (typically Linux-based) along with any other libraries, software and/or files that you have pre-installed. 
+  - A `container` is a packaged version of an operating system that runs within but is isolated from your main computer setup. It runs a user-specified image. There can be multiple containers that run the same image (the image is the blueprint containing the instructions from wich the container starts). The container is independent from your local operating system so if you need to access local files within you'll need to either copy them when you create the base image, or manually specify how a local folder should be mounted to another folder within the container.
+- Why run your code in a container? 
+  - Convenience: You can pre-package everything you need to run an analysis, share it and be sure it will run in the exact same way, even if the other person's computer setup is different.
+  - Testing: Easy to setup containers with different versions of operating systems, libraries, R, etc. to troubleshoot issues reproducing past analyses, or test that your application works across setups
+  - Reproducibility: When analyses are run inside containers they are fully reproducible across users and in the future as the basic operating sytem and associated libraries are the exactly the same. It also serves as a neat way to document the computer setup that was used when the original analysis ran (even if the container itself ends up not being re-used later on).
+- Why use Docker? 
+  - Docker is currently the main platform enabling the deployment of containers and distribution of images. The commands are well documented and there are helpful resources online. There is an easy-to-use platform (_DockerHub_) to share images across users. There is also a set of pre-existing images for R users in Docker (including RStudio). 
+
+# Getting started with an existing image
+
+- Test that Docker is installed: `docker run hello-world`
+- Search for existing images in [_DockerHub_](https://hub.docker.com/) (e.g., try `ubuntu`, `r-base`, `r-minimal`)
+- Typical naming convention for image names: `dockerhub user name`/`image name`:`image tag` (default tag is `latest`)
+- Tags: Refer to specific versions of the same image and follow the `:`. Naming conventions is defined by the maintainer. 
+- [The Rocker Project](https://rocker-project.org/): a repository of images with R already installed. In Rocker, tags usually refer to the R version, e.g., `rocker/r-base:4.2.2`.
+
+
+## The`docker run` command: your new best friend
+
+
+ - `docker run [options] [name of image to launch]`: opens a container with the desired image
+ - `docker run --help`: to see available options (some options can be specified with a shortcut name)
+ - `-ti` or `-it`: container runs interactively from a terminal
+ - `--volumes` or `-v`: mounts volumes (easiest way to access your local files in the container and get your files back) (reproducibility warning: careful about local scripts, alternative might be to clone a git repository and run code from there)
+ - `--rm`: automatically deletes the container after exiting (recommended)
+ - `--volume` or `-v`: mount a local directory to a directory (new or existing) in the container, e.g. `-v ~/mydir:/work/` (creates `work` directory in the container) (you might need to identify the right way to define your local directory in the terminal)
+ - `-w`: defined working directory for the container once it opens (e.g., set to a mounted directory to be able to access local files straight away)
+ - `--name`: give a specific name to your container (mainly useful if you intend to restart it later)
+ - `--port`: specify one between 1024 and 65535 (needs to be unused)
+ 
+ Typical run command for interactive access to R console: 
+`docker run -it --rm -v ``pwd``:/work/ myfirstimage:optionaltag`
+ 
+  Typical run command for opening container, running a `.r` script and exiting once finished:
+ `docker run --rm -v ``pwd``:/work/ myfirstimage:optionaltag Rscript --no-save example.r`
+
+ - Images and container wrangling:
+  - `docker images`: lists images that are installed on your computer (also includes image size)
+  - `docker ps`: see which containers are currently running (and `docker ps -a` to see all containers, including closed ones)
+  - `docker image rm`, `docker rm`, `docker container prune`: delete an image (by ID), delete a specific container (by name), delete all unused (closed) containers
+
+- Useful r images: `r-base` (runs R in terminal), `r-tidyverse` (runs R in terminal), `rocker/rstudio` (opens a port with a R Studio console)
+
+
+
+# Creating bespoke images
+## The `Dockerfile`: your other new best friend
+
+The [Dockerfile](https://docs.docker.com/engine/reference/builder/) is used to define your bespoke image, typically from a pre-existing image that comes with a set of pre-loaded features (e.g. an operating system) (you can also start a new image from `scratch` if you are feeling adventurous)
+
+`docker build -t [name of image] .`
+(the `.` means that you are using the `Dockerfile` included in the current working directory)
+
+## Key commands
+
+The Dockerfile consists of a series of steps listing the instructions to follow in order to build an image. It typically starts from a pre-existing image that comes with a set of pre-loaded features (e.g. an operating system) (you can also start a new image from `scratch` if you are feeling adventurous), and then adds on libraries and files that are required by the user. Each step is prefixed by a `Dockerfile` command. These are the main ones:
+
+- `FROM [pre-existing image]`: used once at the very start of the Dockerfile, defines the image to use as a base layer (e.g. `FROM r-base:4.3.0` or `FROM ubuntu:20.04`)
+- `RUN [insert linux command]`: will run the specified linux command in the current version of the image up to that step (you can include multiple `RUN` lines) (note: linux commands will only be available if they have already been installed---if they haven't you will have to install them in a previous step in the image using `RUN apt-get update && apt-get install -y --no-install-recommends name-of-library`
+ps: `RUN Rscript -e "install.packages('mylibrary')"` is the Rocker-recommended way to install R packages
+- `COPY [local file]`: copies a local file to the image (can also specify a destination within the image's file system)
+- `ADD [url]`: downloads a file from the provided url and stores it in the image's root folder
+
+## Options
+
+- `-t`: include a specific name (and an optional tag) for your bespoke image
+- `--progress=plain`: shows the log from building the image (can be long but _very_ useful for debugging)
+
+
+
+# Reproducibility tricks for R libraries
+
+- Use a base image where the R version is clearly defined (e.g. from Rocker or built yourself) (see [this rocker Dockerfile for an example](https://github.com/rocker-org/rocker/blob/master/r-base/4.3.0/Dockerfile))
+- Freeze version of R packages in a `.Rprofile` (added to your image via `COPY`): [see RStudio package time machine here](https://packagemanager.rstudio.com/client/#/repos/2/overview), for instance this line inserted in a `.Rprofile` will ensure all packages are installed from the 2023-03-22 version of CRAN:
+
+```{r}
+options(repos = c(CRAN = "https://packagemanager.rstudio.com/cran/2023-03-22"))
+```
+
+- Install specific versions of R packages with `remotes::install_version` (you might have to set `repos=https://cloud.r-project.org` if the version had not been released by the CRAN date you set in the `.Rprofile`
+- Install packages from a `.tar.gz` by downloading the file via `ADD`, then install with `install.packages('your.tar.gz', repos=NULL, type='source')`
+
+
